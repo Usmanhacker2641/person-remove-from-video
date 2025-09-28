@@ -1,20 +1,24 @@
 import numpy as np
 import imageio.v2 as imageio
 from scipy.ndimage import gaussian_filter
+import config
 
-def create_alpha_mask(foreground_mask, blur_ksize=21):
+def create_alpha_mask(foreground_mask, blur_ksize=None):
     """
     Create a smooth alpha mask from a binary foreground mask.
     Args:
         foreground_mask: Binary mask (uint8, 0 or 255).
-        blur_ksize: Kernel size for Gaussian blur.
+        blur_ksize: Kernel size for Gaussian blur. If None, uses config default.
     Returns:
         alpha_mask: Float mask in [0,1], blurred at edges.
     """
+    if blur_ksize is None:
+        blur_ksize = config.BLUR_KERNEL_SIZE
+        
     # Normalize mask to [0,1]
     alpha = foreground_mask.astype(np.float32) / 255.0
     # Smooth edges using scipy.ndimage.gaussian_filter
-    sigma = blur_ksize / 6.0  # Approximate conversion from kernel size to sigma
+    sigma = blur_ksize / config.BLUR_SIGMA_RATIO  # Approximate conversion from kernel size to sigma
     alpha = gaussian_filter(alpha, sigma=sigma)
     # Clip to [0,1]
     alpha = np.clip(alpha, 0, 1)

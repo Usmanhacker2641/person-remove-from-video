@@ -7,6 +7,7 @@ import matplotlib.animation as animation
 import numpy as np
 from scipy import ndimage
 from Alpha_blending import alpha_blend, create_alpha_mask
+import config
 
 def main():
     if len(sys.argv) < 2:
@@ -26,7 +27,7 @@ def main():
         print(f"Error: '{folder_path}' is not a directory")
         sys.exit(1)
     
-    image_extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.gif')
+    image_extensions = config.SUPPORTED_IMAGE_EXTENSIONS
     try:
         image_files = [f for f in os.listdir(folder_path) if f.lower().endswith(image_extensions)]
     except PermissionError:
@@ -54,7 +55,7 @@ def main():
             frames.append(img)
             # Convert to grayscale
             if len(img.shape) == 3:  # RGB image
-                gray = np.dot(img[...,:3], [0.2989, 0.5870, 0.1140])
+                gray = np.dot(img[...,:3], config.RGB_TO_GRAY_WEIGHTS)
                 gray_frames.append(gray.astype(np.uint8))
             else:  # Already grayscale
                 gray_frames.append(img)
@@ -69,9 +70,9 @@ def main():
     print(f"Successfully loaded {len(frames)} frames")
     
     # Select a subset for display
-    sample_size = min(16, num_frames)
-    step = num_frames // sample_size if num_frames > sample_size else 1
-    selected_indices = list(range(0, num_frames, step))[:sample_size]
+    sample_size = min(config.MAX_DISPLAY_FRAMES, len(frames))
+    step = len(frames) // sample_size if len(frames) > sample_size else 1
+    selected_indices = list(range(0, len(frames), step))[:sample_size]
     
     # Ensure all frames have the same dimensions
     heights = [frame.shape[0] for frame in frames]
@@ -108,7 +109,7 @@ def main():
     # Stack grayscale frames and compute mean and variance
     gray_stack = np.stack(uniform_grays)
     bg_mean = np.mean(gray_stack, axis=0).astype(np.float32)
-    bg_var = np.var(gray_stack, axis=0).astype(np.float32) + 10.0  # Add small constant to avoid division by zero
+    bg_var = np.var(gray_stack, axis=0).astype(np.float32) + config.BACKGROUND_VARIANCE_OFFSET  # Add small constant to avoid division by zero
     
     # Also compute RGB background for visualization
     rgb_stack = np.stack(uniform_frames)
@@ -124,7 +125,7 @@ def main():
         mahalanobis_dist = diff / np.sqrt(bg_var)
         
         # Apply threshold to get binary mask
-        threshold = 2.5  # Threshold for Mahalanobis distance
+        threshold = config.MAHALANOBIS_THRESHOLD  # Threshold for Mahalanobis distance
         mask = (mahalanobis_dist > threshold).astype(np.uint8) * 255
         foreground_masks.append(mask)
     
@@ -134,9 +135,9 @@ def main():
     
     for mask in foreground_masks:
         # Apply erosion to remove small noise
-        eroded = ndimage.binary_erosion(mask, structure=np.ones((3,3))).astype(np.uint8) * 255
+        eroded = ndimage.binary_erosion(mask, structure=np.ones(config.EROSION_KERNEL_SIZE)).astype(np.uint8) * 255
         # Apply dilation to fill holes and recover shape
-        dilated = ndimage.binary_dilation(eroded, structure=np.ones((5,5))).astype(np.uint8) * 255
+        dilated = ndimage.binary_dilation(eroded, structure=np.ones(config.DILATION_KERNEL_SIZE)).astype(np.uint8) * 255
         cleaned_masks.append(dilated)
     
     # Step 6: Connected components analysis and blob filtering
@@ -149,7 +150,7 @@ def main():
         component_sizes = ndimage.sum(mask, labeled, range(1, num_features + 1))
         
         # Filter small components
-        min_size = 100  # Minimum blob size
+        min_size = config.MIN_BLOB_SIZE  # Minimum blob size
         filtered = np.zeros_like(mask)
         
         # Keep only large components (likely to be people)
@@ -165,15 +166,15 @@ def main():
     
     for i, (frame, mask) in enumerate(zip(uniform_frames, filtered_masks)):
         # Create smooth alpha mask from binary mask
-        alpha = create_alpha_mask(mask, blur_ksize=15)
+        alpha = create_alpha_mask(mask, blur_ksize=config.BLUR_KERNEL_SIZE)
         
         # Blend background with original frame
         processed = alpha_blend(bg_rgb, frame, 1.0 - alpha)  # 1.0 - alpha to invert (remove person)
         processed_frames.append(processed)
     
     # Display frames in two figures side by side
-    rows = 4
-    cols = 4
+    rows = config.DISPLAY_GRID_ROWS
+    cols = config.DISPLAY_GRID_COLS
     fig_size = (cols*2, rows*2)
     
     # Display intermediate results for the first selected frame for debugging
@@ -250,11 +251,11 @@ def main():
         output_dir = "."
     
     # Original video with person
-    original_video_path = os.path.join(output_dir, "original_with_person.mp4")
+    original_video_path = os.path.join(output_dir, config.ORIGINAL_VIDEO_NAME)
     print(f"Saving original video to: {original_video_path}")
     
     try:
-        with imageio.get_writer(original_video_path, fps=30, format='mp4', codec='libx264') as writer:
+        with imageio.get_writer(original_video_path, fps=config.DEFAULT_FPS, format='mp4', codec=config.VIDEO_CODEC) as writer:
             for frame in uniform_frames:
                 writer.append_data(frame)
         print(f"✓ Original video saved successfully")
@@ -262,11 +263,11 @@ def main():
         print(f"Error saving original video: {e}")
     
     # Processed video without person
-    processed_video_path = os.path.join(output_dir, "processed_without_person.mp4")
+    processed_video_path = os.path.join(output_dir, config.PROCESSED_VIDEO_NAME)
     print(f"Saving processed video to: {processed_video_path}")
     
     try:
-        with imageio.get_writer(processed_video_path, fps=30, format='mp4', codec='libx264') as writer:
+        with imageio.get_writer(processed_video_path, fps=config.DEFAULT_FPS, format='mp4', codec=config.VIDEO_CODEC) as writer:
             for frame in processed_frames:
                 writer.append_data(frame)
         print(f"✓ Processed video saved successfully")
@@ -310,11 +311,11 @@ def main():
     plt.show()
     
     # Also create a combined comparison video
-    combined_video_path = os.path.join(output_dir, "comparison_combined.mp4")
+    combined_video_path = os.path.join(output_dir, config.COMPARISON_VIDEO_NAME)
     print(f"Creating combined comparison video: {combined_video_path}")
     
     try:
-        with imageio.get_writer(combined_video_path, fps=30, format='mp4', codec='libx264') as writer:
+        with imageio.get_writer(combined_video_path, fps=config.DEFAULT_FPS, format='mp4', codec=config.VIDEO_CODEC) as writer:
             for original, processed in zip(uniform_frames, processed_frames):
                 # Create side-by-side comparison frame
                 combined_frame = np.hstack((original, processed))

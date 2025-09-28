@@ -11,6 +11,7 @@ __pycache__/
 # Image output files
 output_masks/
 debug_output/
+sample_frames/
 
 # Jupyter Notebook
 .ipynb_checkpoints
