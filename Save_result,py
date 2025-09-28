@@ -1,0 +1,39 @@
+import os
+import numpy as np
+from PIL import Image
+import imageio
+
+def save_masks_as_png(masks, output_dir):
+    """
+    Save a list of 2D numpy arrays (masks) as PNG images.
+    Each mask is normalized to 0/255 and saved as uint8.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    for idx, mask in enumerate(masks):
+        # Normalize mask to 0/255
+        mask_uint8 = (mask.astype(np.float32) > 0) * 255
+        mask_uint8 = mask_uint8.astype(np.uint8)
+        filename = os.path.join(output_dir, f"mask_{idx:03d}.png")
+        Image.fromarray(mask_uint8).save(filename)
+
+def save_video_as_mp4(frames, output_path, fps=30):
+    """
+    Save a list of RGB frames (numpy arrays) as an .mp4 video.
+    Each frame should be a uint8 RGB array.
+    """
+    # Ensure all frames are uint8 and 3-channel
+    processed_frames = []
+    for frame in frames:
+        if frame.dtype != np.uint8:
+            frame = frame.astype(np.uint8)
+        if frame.ndim == 2:  # grayscale to RGB
+            frame = np.stack([frame]*3, axis=-1)
+        processed_frames.append(frame)
+    imageio.mimsave(output_path, processed_frames, fps=fps)
+
+# Example usage:
+# masks = [np.random.randint(0, 2, (256, 256)) for _ in range(10)]  # Example binary masks
+# save_masks_as_png(masks, "masks_output")
+
+# frames = [np.random.randint(0, 255, (256, 256, 3), dtype=np.uint8) for _ in range(10)]  # Example RGB frames
+# save_video_as_mp4(frames, "output.mp4", fps=30)
