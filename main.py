@@ -1,7 +1,7 @@
 import os
 import sys
 import shutil
-import imageio
+import imageio.v2 as imageio  # Use v2 to avoid deprecation warnings
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import numpy as np
@@ -11,33 +11,62 @@ from Alpha_blending import alpha_blend, create_alpha_mask
 def main():
     if len(sys.argv) < 2:
         print("Usage: python main.py <folder_path>")
+        print("Example: python main.py /path/to/video/frames/")
         sys.exit(1)
 
     # Original folder with frames
     folder_path = sys.argv[1]
+    
+    # Validate input folder
+    if not os.path.exists(folder_path):
+        print(f"Error: Folder '{folder_path}' does not exist")
+        sys.exit(1)
+    
+    if not os.path.isdir(folder_path):
+        print(f"Error: '{folder_path}' is not a directory")
+        sys.exit(1)
+    
     image_extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.gif')
-    image_files = [f for f in os.listdir(folder_path) if f.lower().endswith(image_extensions)]
+    try:
+        image_files = [f for f in os.listdir(folder_path) if f.lower().endswith(image_extensions)]
+    except PermissionError:
+        print(f"Error: Permission denied accessing folder '{folder_path}'")
+        sys.exit(1)
+    
     image_files.sort()  # Sort for consistent order
     num_frames = len(image_files)
     if num_frames == 0:
         print(f"No image frames found in: {folder_path}")
+        print(f"Supported formats: {', '.join(image_extensions)}")
         sys.exit(1)
+    
+    print(f"Found {num_frames} frames to process")
 
     # Load all frames and convert to grayscale
     print("Step 1: Reading frames and converting to grayscale...")
     frames = []
     gray_frames = []
     
-    for filename in image_files:
+    for i, filename in enumerate(image_files):
         img_path = os.path.join(folder_path, filename)
-        img = imageio.imread(img_path)
-        frames.append(img)
-        # Convert to grayscale
-        if len(img.shape) == 3:  # RGB image
-            gray = np.dot(img[...,:3], [0.2989, 0.5870, 0.1140])
-            gray_frames.append(gray.astype(np.uint8))
-        else:  # Already grayscale
-            gray_frames.append(img)
+        try:
+            img = imageio.imread(img_path)
+            frames.append(img)
+            # Convert to grayscale
+            if len(img.shape) == 3:  # RGB image
+                gray = np.dot(img[...,:3], [0.2989, 0.5870, 0.1140])
+                gray_frames.append(gray.astype(np.uint8))
+            else:  # Already grayscale
+                gray_frames.append(img)
+        except Exception as e:
+            print(f"Warning: Could not read frame {filename}: {e}")
+            continue
+    
+    if len(frames) == 0:
+        print("Error: No valid frames could be loaded")
+        sys.exit(1)
+    
+    print(f"Successfully loaded {len(frames)} frames")
     
     # Select a subset for display
     sample_size = min(16, num_frames)
@@ -211,25 +240,44 @@ def main():
     # Create MP4 video files from frames
     print("Creating MP4 video files...")
     
+    # Ensure output directory exists and is writable
+    output_dir = os.path.dirname(folder_path) if os.path.dirname(folder_path) else "."
+    try:
+        if not os.access(output_dir, os.W_OK):
+            print(f"Warning: Output directory '{output_dir}' is not writable, using current directory")
+            output_dir = "."
+    except:
+        output_dir = "."
+    
     # Original video with person
-    original_video_path = os.path.join(os.path.dirname(folder_path), "original_with_person.mp4")
+    original_video_path = os.path.join(output_dir, "original_with_person.mp4")
     print(f"Saving original video to: {original_video_path}")
     
-    with imageio.get_writer(original_video_path, fps=30, format='mp4', codec='libx264') as writer:
-        for frame in uniform_frames:
-            writer.append_data(frame)
+    try:
+        with imageio.get_writer(original_video_path, fps=30, format='mp4', codec='libx264') as writer:
+            for frame in uniform_frames:
+                writer.append_data(frame)
+        print(f"✓ Original video saved successfully")
+    except Exception as e:
+        print(f"Error saving original video: {e}")
     
     # Processed video without person
-    processed_video_path = os.path.join(os.path.dirname(folder_path), "processed_without_person.mp4")
+    processed_video_path = os.path.join(output_dir, "processed_without_person.mp4")
     print(f"Saving processed video to: {processed_video_path}")
     
-    with imageio.get_writer(processed_video_path, fps=30, format='mp4', codec='libx264') as writer:
-        for frame in processed_frames:
-            writer.append_data(frame)
+    try:
+        with imageio.get_writer(processed_video_path, fps=30, format='mp4', codec='libx264') as writer:
+            for frame in processed_frames:
+                writer.append_data(frame)
+        print(f"✓ Processed video saved successfully")
+    except Exception as e:
+        print(f"Error saving processed video: {e}")
     
     print(f"Video creation complete!")
-    print(f"Original video: {original_video_path}")
-    print(f"Processed video: {processed_video_path}")
+    if os.path.exists(original_video_path):
+        print(f"Original video: {original_video_path}")
+    if os.path.exists(processed_video_path):
+        print(f"Processed video: {processed_video_path}")
     
     # Display videos on screen using matplotlib animation
     print("Displaying videos on screen...")
@@ -262,16 +310,18 @@ def main():
     plt.show()
     
     # Also create a combined comparison video
-    combined_video_path = os.path.join(os.path.dirname(folder_path), "comparison_combined.mp4")
+    combined_video_path = os.path.join(output_dir, "comparison_combined.mp4")
     print(f"Creating combined comparison video: {combined_video_path}")
     
-    with imageio.get_writer(combined_video_path, fps=30, format='mp4', codec='libx264') as writer:
-        for original, processed in zip(uniform_frames, processed_frames):
-            # Create side-by-side comparison frame
-            combined_frame = np.hstack((original, processed))
-            writer.append_data(combined_frame)
-    
-    print(f"Combined comparison video saved: {combined_video_path}")
+    try:
+        with imageio.get_writer(combined_video_path, fps=30, format='mp4', codec='libx264') as writer:
+            for original, processed in zip(uniform_frames, processed_frames):
+                # Create side-by-side comparison frame
+                combined_frame = np.hstack((original, processed))
+                writer.append_data(combined_frame)
+        print(f"✓ Combined comparison video saved: {combined_video_path}")
+    except Exception as e:
+        print(f"Error saving combined video: {e}")
 
 if __name__ == "__main__":
     main()

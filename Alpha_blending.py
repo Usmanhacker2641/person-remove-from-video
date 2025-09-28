@@ -1,5 +1,5 @@
 import numpy as np
-import imageio
+import imageio.v2 as imageio
 from scipy.ndimage import gaussian_filter
 
 def create_alpha_mask(foreground_mask, blur_ksize=21):
